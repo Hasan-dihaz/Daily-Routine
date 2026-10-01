@@ -26,7 +26,6 @@ const schedule = [
 
 const KEY='gre-planner';
 type Store={prayers:Prayer[];week:Record<string,Task[]>;goal:number};
-const CODE_KEY='gre-sync-code';
 const parse=(j:string):Store=>JSON.parse(j);
 function normalize(x:any):Store|null{
   if(!x||typeof x!=='object') return null;
@@ -51,10 +50,7 @@ export default function Home(){
   const [editPrayer,setEditPrayer]=useState(false);
 
   const [loaded,setLoaded]=useState(false);
-  const [code,setCode]=useState('');
-  const [codeInput,setCodeInput]=useState('');
-  const [showSync,setShowSync]=useState(false);
-  const [status,setStatus]=useState<'off'|'syncing'|'synced'|'error'>('off');
+  const [status,setStatus]=useState<'syncing'|'synced'|'error'>('syncing');
   const updatedAt=useRef(0);
   const lastJson=useRef('');
   const pushTimer=useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -65,32 +61,31 @@ export default function Home(){
   useEffect(()=>{
     const x=readStore();
     if(x) apply(x,Number(localStorage.getItem(KEY+'-at'))||0);
-    try{const c=localStorage.getItem(CODE_KEY)||'';setCode(c);setCodeInput(c)}catch{}
     setLoaded(true);
   },[]);
 
-  const push=async(c:string,x:Store,at:number)=>{
+  const push=async(x:Store,at:number)=>{
     try{
-      const r=await fetch('/api/state',{method:'PUT',headers:{'x-sync-code':c,'Content-Type':'application/json'},body:JSON.stringify({data:x,updatedAt:at})});
+      const r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:x,updatedAt:at})});
       if(!r.ok) throw 0;
       const d=await r.json();
       if(d.updatedAt>at&&d.data){const n=normalize(d.data);if(n){apply(n,d.updatedAt);writeStore(n);localStorage.setItem(KEY+'-at',String(d.updatedAt))}}
       setStatus('synced');
     }catch{setStatus('error')}
   };
-  const pull=async(c:string)=>{
+  const pull=async()=>{
     try{
-      const r=await fetch('/api/state',{headers:{'x-sync-code':c},cache:'no-store'});
+      const r=await fetch('/api/state',{cache:'no-store'});
       if(!r.ok) throw 0;
       const d=await r.json();
       const n=d.data&&normalize(d.data);
       if(n&&d.updatedAt>updatedAt.current){apply(n,d.updatedAt);writeStore(n);try{localStorage.setItem(KEY+'-at',String(d.updatedAt))}catch{}}
-      else if(updatedAt.current>(d.updatedAt||0)) await push(c,{prayers:parse(lastJson.current).prayers,week:parse(lastJson.current).week,goal:parse(lastJson.current).goal},updatedAt.current);
+      else if(updatedAt.current>(d.updatedAt||0)) await push(parse(lastJson.current),updatedAt.current);
       setStatus('synced');
     }catch{setStatus('error')}
   };
 
-  // Persist every change locally and push to the cloud (debounced) when a sync code is set.
+  // Persist every change locally and push to the cloud (debounced).
   useEffect(()=>{
     if(!loaded) return;
     const x={prayers,week,goal};
@@ -100,33 +95,21 @@ export default function Home(){
     updatedAt.current=Date.now();
     writeStore(x);
     try{localStorage.setItem(KEY+'-at',String(updatedAt.current))}catch{}
-    if(code){
-      setStatus('syncing');
-      clearTimeout(pushTimer.current);
-      const at=updatedAt.current;
-      pushTimer.current=setTimeout(()=>push(code,x,at),600);
-    }
-  },[loaded,prayers,week,goal,code]);
+    setStatus('syncing');
+    clearTimeout(pushTimer.current);
+    const at=updatedAt.current;
+    pushTimer.current=setTimeout(()=>push(x,at),600);
+  },[loaded,prayers,week,goal]);
 
   // Pull on connect, every 15s, and when the tab regains focus.
   useEffect(()=>{
-    if(!loaded||!code){setStatus('off');return}
-    setStatus('syncing');
-    pull(code);
-    const t=setInterval(()=>pull(code),15000);
-    const onVis=()=>{if(document.visibilityState==='visible')pull(code)};
+    if(!loaded) return;
+    pull();
+    const t=setInterval(pull,15000);
+    const onVis=()=>{if(document.visibilityState==='visible')pull()};
     document.addEventListener('visibilitychange',onVis);
     return ()=>{clearInterval(t);document.removeEventListener('visibilitychange',onVis)};
-  },[loaded,code]);
-
-  const connect=(c:string)=>{
-    c=c.trim();
-    if(c.length<12) return;
-    try{localStorage.setItem(CODE_KEY,c)}catch{}
-    setCode(c);setCodeInput(c);setShowSync(false);
-  };
-  const disconnect=()=>{try{localStorage.removeItem(CODE_KEY)}catch{}setCode('');setCodeInput('');setStatus('off')};
-  const generate=()=>connect(Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join(''));
+  },[loaded]);
 
   const selected=week[day]||[];
   const completed=Object.values(week).flat().filter(x=>x.done).reduce((a,x)=>a+x.duration,0)/60;
@@ -134,12 +117,11 @@ export default function Home(){
   const progress=Math.min(100,Math.round(completed/goal*100));
   const todayDone=selected.filter(x=>x.done).length;
   const toggle=(id:string)=>setWeek(w=>({...w,[day]:w[day].map(x=>x.id===id?{...x,done:!x.done}:x)}));
-  const save=()=>{writeStore({prayers,week,goal});if(code)pull(code);setSaved(true);setTimeout(()=>setSaved(false),1800)};
+  const save=()=>{writeStore({prayers,week,goal});pull();setSaved(true);setTimeout(()=>setSaved(false),1800)};
   const reset=()=>{setWeek(tasks);setPrayers(defaultPrayers);setGoal(16)};
 
   return <main>
-    <header className="top"><div><div className="eyebrow">PERSONAL STUDY SYSTEM</div><h1>GRE Routine Planner</h1><p>Prayer-aware planning for a full-time work week.</p></div><div className="actions"><button className="ghost" onClick={()=>setShowSync(v=>!v)}>{code?<Cloud size={16}/>:<CloudOff size={16}/>}{code?(status==='error'?'Sync error':status==='syncing'?'Syncing…':'Synced'):'Sync'}</button><button className="ghost" onClick={reset}><RotateCcw size={16}/>Reset</button><button className="primary" onClick={save}><Save size={16}/>{saved?'Saved':'Save progress'}</button></div></header>
-    {showSync&&<section className="card syncbox"><b>Sync across devices</b><p className="muted">Use the same sync code on every device. Anyone with the code can see and edit your plan, so keep it private.</p><div className="syncrow"><input value={codeInput} onChange={e=>setCodeInput(e.target.value)} placeholder="Paste your sync code (12+ characters)" autoCapitalize="off" autoCorrect="off" spellCheck={false}/><button className="primary" onClick={()=>connect(codeInput)} disabled={codeInput.trim().length<12}>Connect</button></div><div className="syncrow">{!code&&<button className="ghost" onClick={generate}>Generate new code</button>}{code&&<button className="ghost" onClick={disconnect}>Disconnect this device</button>}</div>{status==='error'&&<p className="muted">Could not reach the sync service. Changes are kept locally and will retry.</p>}</section>}
+    <header className="top"><div><div className="eyebrow">PERSONAL STUDY SYSTEM</div><h1>GRE Routine Planner</h1><p>Prayer-aware planning for a full-time work week.</p></div><div className="actions"><span className="pill syncpill">{status==='error'?<CloudOff size={14}/>:<Cloud size={14}/>}{status==='error'?'Offline':status==='syncing'?'Syncing…':'Synced'}</span><button className="ghost" onClick={reset}><RotateCcw size={16}/>Reset</button><button className="primary" onClick={save}><Save size={16}/>{saved?'Saved':'Save progress'}</button></div></header>
     <section className="stats">
       <Stat icon={<Clock3/>} label="GRE this week" value={`${completed.toFixed(1)}h`} sub={`of ${goal}h goal`}/>
       <Stat icon={<Target/>} label="Weekly progress" value={`${progress}%`} sub={`${Math.max(0,goal-completed).toFixed(1)}h remaining`}/>
@@ -153,7 +135,7 @@ export default function Home(){
     </div>
     <section className="card tasks"><div className="cardhead"><div><span className="kicker">STUDY TRACKER</span><h2>Weekly plan</h2></div><div className="tabs">{days.map(d=><button className={day===d?'active':''} onClick={()=>setDay(d)} key={d}>{d.slice(0,3)}</button>)}</div></div><div className="tasklist">{selected.map(t=><label className={`task ${t.done?'done':''}`} key={t.id}><input type="checkbox" checked={t.done} onChange={()=>toggle(t.id)}/><span className="tasktitle">{t.title}<small>{t.type} · {t.duration} min</small></span><span className="duration">{t.duration}m</span></label>)}</div></section>
     <section className="card tips"><div className="tip"><BookOpen/><div><b>GRE strategy</b><p>Use Fajr for low-friction vocabulary, your evening block for deep work, and Sunday for a timed mock plus mistake analysis.</p></div></div><div className="tip"><Timer/><div><b>Protect your focus</b><p>Start each 60–90 minute session with one clearly defined target. Keep an error log instead of simply repeating questions.</p></div></div></section>
-    <footer>Progress saves automatically on this device; add a sync code to keep all your devices up to date.</footer>
+    <footer>Progress saves automatically and syncs across your devices.</footer>
   </main>
 }
 function Stat({icon,label,value,sub}:{icon:React.ReactNode,label:string,value:string,sub:string}){return <div className="stat"><div className="staticon">{icon}</div><div><span>{label}</span><strong>{value}</strong><small>{sub}</small></div></div>}

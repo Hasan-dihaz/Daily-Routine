@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && prisma db push && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0",
+    "@prisma/client": "6",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",
@@ -19,6 +20,7 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "prisma": "6",
     "typescript": "latest"
   }
 }

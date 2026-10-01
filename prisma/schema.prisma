@@ -1,0 +1,17 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+model Plan {
+  key       String @id // sha256 of the sync code
+  data      Json
+  updatedAt BigInt @map("updated_at")
+
+  @@map("plans")
+}

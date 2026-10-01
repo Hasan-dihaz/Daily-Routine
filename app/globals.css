@@ -5,3 +5,4 @@
 @media(max-width:520px){h1{font-size:28px}.card{padding:16px}.cardhead{flex-direction:column;align-items:flex-start}.cardhead:has(.iconbtn){flex-direction:row;align-items:center}.tabs{width:100%;display:grid;grid-template-columns:repeat(7,1fr)}.tabs button{padding:9px 0;text-align:center}.prayer input{font-size:16px;width:96px}.task{padding:12px;gap:10px}.task input{width:20px;height:20px;flex:none}.actions{flex-wrap:wrap}.tips{gap:18px}}
 @media(max-width:360px){.stats{grid-template-columns:1fr}.row{grid-template-columns:1fr;gap:2px}}
 .syncbox{margin-bottom:16px}.syncbox p{margin:6px 0 12px}.syncrow{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}.syncrow input{flex:1;min-width:200px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:16px}.primary:disabled{opacity:.5;cursor:not-allowed}
+.syncpill{display:flex;align-items:center;gap:6px}
